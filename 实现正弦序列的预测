@@ -1,0 +1,76 @@
+import random
+import numpy as np
+import tensorflow as tf
+
+#构造序列数据样本
+def build_data(n):
+    xs=[]
+    ys=[]
+    for i in range(2000):
+        k = random.uniform(1,50)
+
+        #x[i]=sin(k+i)
+        #y[i]=sin(k+n)
+        x=[[np.sin(k+j)]for j in range(0,n)]
+        y=[np.sin(k+n)]
+        xs.append(x)
+        ys.append(y)
+
+    train_x=np.array(xs[0:1500])
+    train_y=np.array(ys[0:1500])
+    test_x=np.array(xs[1500:])
+    test_y=np.array(ys[1500:])
+    return(train_x,train_y,test_x,test_y)
+
+#build data
+(train_x,train_y,test_x,test_y)=build_data(10)
+print(train_x.shape,train_y.shape,test_x.shape,test_y.shape)
+
+#用BasicRNNCell构建RNN
+from tensorflow.contrib import rnn
+
+length=10
+time_step_size=length
+vector_size=1
+batch_size=10
+test_size=10
+
+X=tf.placeholder("float",[None,length,vector_size])
+Y=tf.placeholder("float",[None,1])
+
+W=tf.Variable(tf.random_normal([10,1],stddev=0.01))
+B=tf.Variable(tf.random_normal([1],stddev=0.01))
+
+def seq_predict_model(X,w,b,time_step_size,vector_size):
+    #定义输入的X，调换参数位置
+    #将X的参数转变成[tst,bs,vs]
+    X=tf.transpose(X,[1,0,2])
+    #把X参数变为[ts*bs,vs]
+    X=tf.reshape(X,[-1,vector_size])
+    #split X,array[ts],shape:[bs,vs]
+    X=tf.split(X,time_step_size,0)
+
+    cell=tf.contrib.rnn.BasicRNNCell(num_units=10)
+    initial_state=tf.zeros([batch_size,cell.state_size])
+    outputs,_states=tf.contrib.rnn.static_rnn(cell,X,initial_state=initial_state)
+    return tf.matmul(outputs[-1],w)+b,cell.state_size
+pred_y,_=seq_predict_model(X,W,B,time_step_size,vector_size)
+#定义代价函数和优化算法
+loss=tf.square(tf.subtract(Y,pred_y))
+train_op=tf.train.GradientDescentOptimizer(0.001).minimize(loss)
+
+with tf.Session() as sess:
+    tf.global_variables_initializer().run()
+    for i in range(50):
+        for end in range(batch_size,len(train_x),batch_size):
+            begin=end-batch_size
+            x_value=train_x[begin:end]
+            y_value=train_y[begin:end]
+            sess.run(train_op,feed_dict={X:x_value,Y:y_value})
+    test_indices=np.arange(len(test_x))
+    np.random.shuffle(test_indices)
+    test_indice=test_indices[0:test_size]
+    x_value=test_x[test_indices]
+    y_value=test_y[test_indices]
+    val_loss=np.mean(sess.run(loss,feed_dict={X:x_value,Y:y_value}))
+print('Run%s'%i,val_loss)
